@@ -1,0 +1,35 @@
+{
+  "name": "site-spy",
+  "version": "1.0.0",
+  "description": "Analyze a website",
+  "main": "app.js",
+  "scripts": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/numinos1/site-spy.git"
+  },
+  "keywords": [
+    "css",
+    "html",
+    "javascript",
+    "analysis",
+    "inspect"
+  ],
+  "author": "Andrew Bunker",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/numinos1/site-spy/issues"
+  },
+  "homepage": "https://github.com/numinos1/site-spy#readme",
+  "dependencies": {
+    "axios": "^0.17.1",
+    "bluebird": "^3.5.1",
+    "chalk": "^2.3.0",
+    "css": "^2.2.1",
+    "embedable": "^1.0.32",
+    "htmlparser2": "^3.9.2",
+    "lodash": "^4.17.4"
+  }
+}
