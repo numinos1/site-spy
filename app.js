@@ -3,13 +3,39 @@ const axios = require('axios');
 const fs = require('fs');
 const chalk = require('chalk');
 const _ = require('lodash');
-const htmlparser = require('htmlparser2');
+const fetchHTML = require('./lib/fetchHTML');
+const fetchCSS = require('./lib/fetchCSS');
+const utils = require('./lib/utils');
+
 const embedable = require('embedable')();
 const Promise = require('bluebird');
 
 const PROMISE_OPTS = { concurrency: 5 };
 
-fetchSite('https://lds.org/');
+fetchSite('https://www.smashingmagazine.com')
+//fetchSite('https://davidwalsh.name/write-media-queries-sass')
+//fetchSite('https://www.ksl.com')
+//fetchSite('https://www.deseretnews.com')
+//fetchSite('https://digiday.com')
+//fetchSite('https://littlethings.com')
+//fetchSite('https://buzzfeed.com')
+//fetchSite('https://www.bloomberg.com/news/features/2017-12-06/millions-are-hounded-for-debt-they-don-t-owe-one-victim-fought-back-with-a-vengeance')
+//fetchSite('https://redtri.com')
+//fetchSite('https://familyshare.com/')
+//fetchSite('https://www.searchenginejournal.com/seo-friendly-url-structure-2/202790/')
+//fetchSite('https://businessinsider.com')
+//fetchSite('https://www.huffingtonpost.com/')
+//fetchSite('https://cnn.com')
+//fetchSite('https://www.orbitmedia.com/blog/web-design-standards/')
+//fetchSite('https://freshysites.com/')
+//fetchSite('http://www.creativebloq.com/')
+//fetchSite('https://www.kaocollins.com/inktank/')
+//fetchSite('https://razorfish.com')
+fetchSite('http://www.22squared.com/')
+	.catch(err => {
+		console.log("CAUGHT ERROR", err);
+		process.exit();
+	});
 
 /**
  * Fetch the site by URI
@@ -17,86 +43,72 @@ fetchSite('https://lds.org/');
  * @param      {<type>}  uri     The uri
  * @return     {<type>}  { description_of_the_return_value }
  */
-function fetchSite(uri) {
-	return fetchPage(uri).then(function(data) {
-		return Promise.map(data.stylesheets, function(stylesheet) {
-			return fetchStylesheet(stylesheet, uri);
-		}, PROMISE_OPTS);
-	})
-	.then(function(out) {
-		const css = out.reduce((memo, part) => {
-			return memo + part.css;
-		}, '');
-		const styleSheets = out.reduce((memo, part) => {
-			memo.push(part.uri);
-			return memo;
-		}, []);
-		const vals = parseCSS(css);
+async function fetchSite(uri) {
+	const html = await fetchHTML(uri);
+	const styles = await fetchCSS(html.styles);
 
-		// fonts
-		const fonts = vals.props['font-family'].values;
-		let fontList = {};
-		_.keys(fonts).forEach(font => {
-			const name = font.replace(/("|'|\!important)/gm, '').split(',')[0];
-			if (name !== 'inherit') {
-			 	fontList[name] = true;
-			}
-		});
-		fontList = _.keys(fontList).sort();
+	const page = {
+		styles: utils.toStyles(html.styles),
+		scripts: html.scripts,
+		props: styles.props,
+		media: styles.media,
+		comments: styles.comments,
+		classes: styles.classes,
+		fonts: utils.toFonts(styles.props),
+		sizes: utils.toSizes(styles.media)
+	};
 
-		vals.styleSheets = styleSheets;
-		vals.fonts = fontList;
+	// page: styles, scripts, props, media
 
-		return vals;
-	})
-	.then(report);
-}
+	//console.log(JSON.stringify(page.styles, null, ' '));
+	//console.log(JSON.stringify(styles.media, null, ' '));
 
-/**
- * Output the Report
- *
- * @param      {<type>}  report  The report
- */
-function report(report) {
 	console.log('\nStyleSheets');
 	console.log('-------------------------------------------------');
 
-	report.styleSheets.forEach((item, i) => {
+	page.styles.forEach((item, i) => {
 		console.log(chalk.white(i) + '. ' + chalk.blue(item));
 	});
 
 	console.log('\nFonts');
 	console.log('-------------------------------------------------');
 
-	report.fonts.forEach((item, i) => {
+	page.fonts.forEach((item, i) => {
 		console.log(chalk.white(i) + '. ' + chalk.blue(item));
 	});
 
 	console.log('\nSizes');
 	console.log('-------------------------------------------------');
 
-	var sizes = report.media.join(' ')
-		.match(/(max|min)\-width\:\s*\d+\w+/gim)
-		.reduce((memo, value) => {
-			const val = value.match(/\d+/);
-			memo[val[0]] = true;
-			return memo;
-		}, {});
-
-	_.keys(sizes).forEach((item, i) => {
+	page.sizes.forEach((item, i) => {
 		console.log(chalk.white(i) + '. ' + chalk.blue(item));
 	});
 
 	console.log('\nProperties');
 	console.log('-------------------------------------------------');
 
-	var values = _.values(report.props).sort((a, b) => {
+	var values = _.values(page.props).sort((a, b) => {
 		return (a.name < b.name) ? -1 : 1;
 	});
 
 	values.forEach(value => {
 		console.log(chalk.blue(value.name), '=', value.count); //, value.values);
 	});
+
+	console.log('\nClasses');
+	console.log('-------------------------------------------------');
+
+	page.classes.forEach((item, i) => {
+		console.log(item);
+	});
+
+	console.log('\nComments');
+	console.log('-------------------------------------------------');
+
+	page.comments.forEach((item, i) => {
+		console.log(item);
+	});
+
 }
 
 //
@@ -111,129 +123,3 @@ function report(report) {
 
 // console.log(out);
 
-// ----------------------------------------------------------------------------------
-// 				CSS Parsing
-// ----------------------------------------------------------------------------------
-
-function fetchStylesheet(path, uri) {
-	if (!path.match(/^http/)) {
-		if (path.indexOf('//') === 0) {
-			path = uri.match(/^https*:/i)[0] + path;
-		}
-		else if (path.indexOf('/') === 0) {
-			path = uri.replace(/\/+$/, '') + path;
-		}
-		else {
-			path = uri = uri.replace(/\/+$/, '') + '/' + path;
-		}
-	}
-	return axios.get(path)
-		.then(response => {
-			return {
-				uri: path,
-				css: response.data
-			};
-		})
-		.catch(error => {
-			console.error(error);
-		});
-}
-
-function parseCSS(cssText) {
-	let props = {};
-	let medias = [];
-	let ast = null;
-
-	try {
-		ast = css.parse(cssText, { silent: false });
-		toRules(ast.stylesheet.rules);
-	}
-	catch(err) {
-		console.log("ERROR", err.message);
-	}
-
-	function toRules(rules) {
-		rules.forEach(rule => {
-			if (rule.type === 'media') {
-				medias.push(rule.media);
-				toRules(rule.rules);
-			}
-			else if (rule.type === 'rule') {
-				const selectors = rule.selectors;
-
-				//console.log();
-
-				selectors.forEach(selector => {
-					//console.log(chalk.green(selector));
-				});
-
-				rule.declarations.forEach(function(declaration) {
-					const name = declaration.property;
-					const value = declaration.value;
-					let prop;
-
-					//console.log(chalk.blue(declaration.property) + ':', declaration.value);
-
-					if (!(prop = props[name])) {
-						prop = props[name] = { name, count: 0, values: {}};
-					}
-					prop.count++;
-					prop.values[value] = (prop.values[value] || 0) + 1;
-				});
-			}
-		});
-	}
-	return {
-		ast: ast,
-		props: props,
-		media: medias
-	}
-}
-
-// ----------------------------------------------------------------------------------
-// 				HTML Parsing
-// ----------------------------------------------------------------------------------
-
-function fetchPage(uri) {
-	return axios.get(uri)
-		.then(response => {
-			return parseHTML(response.data);
-		})
-		.catch(error => {
-			console.error(error);
-		});
-}
-
-function parseHTML(html) {
-	stylesheets = [];
-
-	function onOpenTag(name, attrs) {
-	 	if (name === 'link' && attrs.rel === 'stylesheet') {
-	 		stylesheets.push(attrs.href);
-	 	}
-	 	else if (name === 'script') {
-	 		if (attrs.type && attrs.type.match(/text\/javascript/i)) {
-	 			console.log('SCRIPT', name, attrs);
-	 		}
-	 	}
-  }
-
-  function onText(text) {
-  }
-
-  function onCloseTag() {
-  }
-
-	const parser = new htmlparser.Parser({
-    onopentag: onOpenTag,
-    ontext: onText,
-    onclosetag: onCloseTag
-  });
-
-  parser.write(html);
-  parser.end();
-
-  return {
-  	stylesheets: stylesheets
-  };
-}
