@@ -30,6 +30,11 @@
     "css": "^2.2.1",
     "embedable": "^1.0.32",
     "htmlparser2": "^3.9.2",
-    "lodash": "^4.17.4"
+    "lodash": "^4.17.4",
+    "numeral": "^2.0.6",
+    "p-queue": "^2.4.2",
+    "perfy": "^1.1.2",
+    "sprintf-js": "^1.1.1",
+    "url-join": "^4.0.0"
   }
 }
